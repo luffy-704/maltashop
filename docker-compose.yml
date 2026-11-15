@@ -1,0 +1,23 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      retries: 5
+  order:
+    build: ./order-service
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq/
+      DB_PATH: /data/orders.db
+    ports: ["8001:8000"]
+    volumes: [order-data:/data]
+    depends_on: { rabbitmq: { condition: service_healthy } }
+  notification:
+    build: ./notification-service
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq/
+      DB_PATH: /data/notifications.db
+    volumes: [notif-data:/data]
+    depends_on: { rabbitmq: { condition: service_healthy } }
+volumes: { order-data: {}, notif-data: {} }
