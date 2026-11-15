@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r order-service/requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile order-service/app.py notification-service/app.py
+
+      - name: Build images tagged with commit SHA
+        run: |
+          docker build -t maltashop-order:${{ github.sha }} order-service
+          docker build -t maltashop-notification:${{ github.sha }} notification-service
+
+      - name: Start the system and wait for health checks
+        run: docker compose up -d --build --wait
+
+      - name: Smoke test, place an order and check the event is consumed
+        run: |
+          curl -sf -X POST localhost:8001/orders \
+            -H "Content-Type: application/json" \
+            -H "Idempotency-Key: ci-1" \
+            -H "X-Correlation-ID: ci-demo" \
+            -d '{"item":"kettle","qty":1}'
+          sleep 3
+          docker compose logs notification | grep ci-demo
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
